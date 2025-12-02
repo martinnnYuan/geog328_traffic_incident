@@ -1,0 +1,378 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Traffic Safety Map ? 2022</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://unpkg.com/maplibre-gl@3.6.0/dist/maplibre-gl.css" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    #map { position: relative; }
+    .maplibregl-popup-content { font-family: "Space Grotesk", "Segoe UI", system-ui, sans-serif; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <nav class="nav">
+      <div class="brand">Traffic Safety Map <span class="badge">2022</span></div>
+      <div class="nav-links">
+        <a href="index.html">Home</a>
+        <a class="active" href="map.html">Map</a>
+        <a href="team.html">Team</a>
+      </div>
+    </nav>
+
+    <div class="map-layout">
+      <div class="side">
+        <div class="section">
+          <h2>Layers</h2>
+          <label><input type="checkbox" id="toggle-volume" checked /> Traffic volume (AWDT)</label>
+          <label><input type="checkbox" id="toggle-risk" /> Traffic risk index</label>
+          <label><input type="checkbox" id="toggle-collisions" checked /> Collisions</label>
+        </div>
+        <div class="section">
+          <h2>Top Risk Segments</h2>
+          <div class="list" id="top-list">Risk not computed yet.</div>
+          <button class="btn primary" id="compute-risk" style="margin-top:8px;">Compute risk index</button>
+          <div id="progress" style="font-size:12px;color:var(--muted);margin-top:4px;"></div>
+        </div>
+        <div class="section">
+          <h2>Notes</h2>
+          <div class="meta">
+            <div><span class="pill" style="background: var(--red);">Risk</span> crashes per traffic volume (2022).</div>
+            <div><span class="pill" style="background: #2b83ba;">Collisions</span> circle color/size ~ severity.</div>
+            <div>Base map: OSM raster; thematic layers above tiles.</div>
+          </div>
+        </div>
+      </div>
+      <div style="position:relative;">
+        <div id="map"></div>
+        <div class="legend">
+          <h4>Legend <span class="pill" style="background:#111;color:#fff;">2022</span></h4>
+          <div><b>Risk index</b>: hotter lines = more crashes per volume</div>
+          <div><b>Volume</b>: bright cyan = higher AWDT</div>
+          <div><b>Collisions</b>: larger warm circles = more severe</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/maplibre-gl@3.6.0/dist/maplibre-gl.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/proj4@2.11.0/dist/proj4.js"></script>
+  <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
+  <script>
+    const collisionsUrl = "assets/2022_SDOT_Collisions_Cleaned_CRS.geojson";
+    const flowUrl = "assets/2022_traffic_flow_counts_cleaned.geojson";
+
+    const proj2926 = "+proj=lcc +lat_1=47.5 +lat_2=48.73333333333333 +lat_0=47 +lon_0=-120.8333333333333 +x_0=500000 +y_0=0 +datum=NAD83 +units=us-ft +no_defs";
+    const toWgs84 = (coords) => proj4(proj2926, proj4.WGS84, coords);
+
+    function reprojectGeometry(geom) {
+      if (!geom) return null;
+      if (geom.type === "Point") return { type: "Point", coordinates: toWgs84(geom.coordinates) };
+      if (geom.type === "LineString") return { type: "LineString", coordinates: geom.coordinates.map(toWgs84) };
+      if (geom.type === "MultiLineString") return { type: "MultiLineString", coordinates: geom.coordinates.map(line => line.map(toWgs84)) };
+      if (geom.type === "MultiPoint") return { type: "MultiPoint", coordinates: geom.coordinates.map(toWgs84) };
+      return geom;
+    }
+    function reprojectFeature(f) {
+      const g = reprojectGeometry(f.geometry);
+      if (!g) return null;
+      return { ...f, geometry: g };
+    }
+
+    async function loadData() {
+      const [collisions, flows] = await Promise.all([
+        fetch(collisionsUrl).then(r => r.json()),
+        fetch(flowUrl).then(r => r.json())
+      ]);
+      const collisionsWgs = { type: "FeatureCollection", features: collisions.features.map(reprojectFeature).filter(Boolean) };
+      const flowsWgs = { type: "FeatureCollection", features: flows.features.map(reprojectFeature).filter(Boolean) };
+      return { collisionsWgs, flowsWgs };
+    }
+
+    function buildSpatialIndex(flowsWgs, cellSize = 0.02) {
+      const index = new Map();
+      const bboxes = [];
+      flowsWgs.features.forEach((f, i) => {
+        if (!f.geometry) return;
+        const bbox = turf.bbox(f);
+        bboxes[i] = bbox;
+        const [minX, minY, maxX, maxY] = bbox;
+        const minCx = Math.floor(minX / cellSize);
+        const maxCx = Math.floor(maxX / cellSize);
+        const minCy = Math.floor(minY / cellSize);
+        const maxCy = Math.floor(maxY / cellSize);
+        for (let cx = minCx; cx <= maxCx; cx++) {
+          for (let cy = minCy; cy <= maxCy; cy++) {
+            const key = `${cx},${cy}`;
+            if (!index.has(key)) index.set(key, []);
+            index.get(key).push(i);
+          }
+        }
+      });
+      return { index, bboxes, cellSize };
+    }
+
+    function computeRiskAsync(flowsWgs, collisionsWgs, { onProgress, onDone }) {
+      const crashCounts = new Array(flowsWgs.features.length).fill(0);
+      const { index, bboxes, cellSize } = buildSpatialIndex(flowsWgs, 0.02);
+      const searchRadiusCells = 1;
+      const total = collisionsWgs.features.length;
+      let i = 0;
+      function step() {
+        const start = performance.now();
+        while (i < total && performance.now() - start < 20) {
+          const c = collisionsWgs.features[i];
+          i++;
+          if (!c || !c.geometry) continue;
+          const [lng, lat] = c.geometry.coordinates;
+          const cx = Math.floor(lng / cellSize);
+          const cy = Math.floor(lat / cellSize);
+          const candidates = new Set();
+          for (let dx = -searchRadiusCells; dx <= searchRadiusCells; dx++) {
+            for (let dy = -searchRadiusCells; dy <= searchRadiusCells; dy++) {
+              const arr = index.get(`${cx + dx},${cy + dy}`);
+              if (arr) arr.forEach(id => candidates.add(id));
+            }
+          }
+          let bestIdx = -1, bestDist = Infinity;
+          candidates.forEach(fid => {
+            const geom = flowsWgs.features[fid].geometry;
+            if (!geom) return;
+            const [minX, minY, maxX, maxY] = bboxes[fid];
+            if (lng < minX - 0.02 || lng > maxX + 0.02 || lat < minY - 0.02 || lat > maxY + 0.02) return;
+            const snapped = turf.nearestPointOnLine({ type: geom.type, coordinates: geom.coordinates }, c.geometry);
+            if (!snapped || typeof snapped.properties.dist !== "number") return;
+            const d = snapped.properties.dist;
+            if (d < bestDist) { bestDist = d; bestIdx = fid; }
+          });
+          if (bestIdx >= 0) crashCounts[bestIdx] += 1;
+        }
+        onProgress && onProgress(i, total);
+        if (i < total) {
+          setTimeout(step, 0);
+        } else {
+          const scores = flowsWgs.features.map((f, idx) => {
+            const p = f.properties || {};
+            const vol = p.AWDT || p.ADT || 0;
+            const crashes = crashCounts[idx];
+            const score = crashes / (vol + 1);
+            return { idx, name: p.STNAME_ORD || "Segment", vol, crashes, score };
+          });
+          const maxScore = Math.max(...scores.map(s => s.score), 0.0001);
+          onDone && onDone({ scores, maxScore });
+        }
+      }
+      step();
+    }
+
+    function renderTopList(scores, flowsWgs, map) {
+      const list = document.getElementById("top-list");
+      if (!list) return;
+      list.innerHTML = "";
+      scores
+        .filter(s => s.vol > 0)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 12)
+        .forEach((s, i) => {
+          const div = document.createElement("div");
+          div.className = "item";
+          div.innerHTML = `<strong>#${i + 1} ${s.name}</strong><div class="meta">Crashes: ${s.crashes} • AWDT: ${s.vol} • Score: ${s.score.toFixed(5)}</div>`;
+          div.onclick = () => {
+            const feat = flowsWgs.features[s.idx];
+            if (!feat) return;
+            const bbox = turf.bbox(feat);
+            map.fitBounds([[bbox[0], bbox[1]], [bbox[2], bbox[3]]], { padding: 40, maxZoom: 16 });
+          };
+          list.appendChild(div);
+        });
+      if (!list.childElementCount) list.textContent = "No risk scores computed.";
+    }
+
+    (async function init() {
+      if (!window.maplibregl) {
+        alert("Map library failed to load. Check your connection and try again.");
+        return;
+      }
+      const { collisionsWgs, flowsWgs } = await loadData();
+      const listEl = document.getElementById("top-list");
+      listEl.textContent = "Risk not computed yet.";
+
+      const mapStyle = {
+        version: 8,
+        sources: {
+          osm: {
+            type: "raster",
+            tiles: [
+              "https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
+              "https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
+              "https://c.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png"
+            ],
+            tileSize: 256,
+            attribution: "? OpenStreetMap, ? CARTO"
+          }
+        },
+        layers: [{ id: "osm", type: "raster", source: "osm" }]
+      };
+
+      const map = new maplibregl.Map({
+        container: "map",
+        style: mapStyle,
+        center: [-122.3321, 47.6062],
+        zoom: 11.2,
+        attributionControl: false
+      });
+      map.addControl(new maplibregl.NavigationControl(), "top-right");
+      map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right");
+
+      map.on("load", () => {
+        map.addSource("flows", { type: "geojson", data: flowsWgs });
+        map.addSource("collisions", { type: "geojson", data: collisionsWgs });
+
+        const allBbox = turf.bbox(flowsWgs.features.length ? flowsWgs : collisionsWgs);
+        map.fitBounds([[allBbox[0], allBbox[1]], [allBbox[2], allBbox[3]]], { padding: 40 });
+
+        map.addLayer({
+          id: "volume",
+          type: "line",
+          source: "flows",
+          paint: {
+            "line-color": [
+              "case",
+              [">", ["coalesce", ["get", "AWDT"], ["get", "ADT"], 0], 40000], "#00e0ff",
+              [">", ["coalesce", ["get", "AWDT"], ["get", "ADT"], 0], 25000], "#00b4ff",
+              [">", ["coalesce", ["get", "AWDT"], ["get", "ADT"], 0], 12000], "#0090ff",
+              "#0070d9"
+            ],
+            "line-width": [
+              "interpolate", ["linear"], ["coalesce", ["get", "AWDT"], ["get", "ADT"], 0],
+              0, 2,
+              10000, 3,
+              25000, 4.5,
+              45000, 6.5
+            ],
+            "line-opacity": 0.9
+          }
+        });
+
+        map.addLayer({
+          id: "risk",
+          type: "line",
+          source: "flows",
+          layout: { visibility: "none" },
+          paint: {
+            "line-color": "#d9ef8b",
+            "line-width": 3.5,
+            "line-opacity": 0.95
+          }
+        });
+
+        map.addLayer({
+          id: "collisions",
+          type: "circle",
+          source: "collisions",
+          paint: {
+            "circle-radius": [
+              "case",
+              ["==", ["get", "SEVERITYDESC"], "Fatal Collision"], 10,
+              ["match", ["get", "SEVERITYDESC"], ["Serious Injury Collision", "Serious Injury Collision "], true, false], 8,
+              6
+            ],
+            "circle-color": [
+              "case",
+              ["==", ["get", "SEVERITYDESC"], "Fatal Collision"], "#d7191c",
+              ["match", ["get", "SEVERITYDESC"], ["Serious Injury Collision", "Serious Injury Collision "], true, false], "#fdae61",
+              "#2b83ba"
+            ],
+            "circle-opacity": 0.8,
+            "circle-stroke-color": "#0b1526",
+            "circle-stroke-width": 1
+          }
+        });
+
+        map.on("click", "collisions", (e) => {
+          const p = e.features[0].properties;
+          new maplibregl.Popup()
+            .setLngLat(e.lngLat)
+            .setHTML(`<b>${p.SEVERITYDESC || "Collision"}</b><br>Date: ${p.INCDATE || "n/a"}<br>Type: ${p.COLLISIONTYPE || "n/a"}<br>Weather: ${p.WEATHER || "n/a"}`)
+            .addTo(map);
+        });
+
+        const toggle = (id, layerId) => {
+          const el = document.getElementById(id);
+          const sync = () => map.setLayoutProperty(layerId, "visibility", el.checked ? "visible" : "none");
+          el.onchange = sync;
+          sync();
+        };
+        toggle("toggle-volume", "volume");
+        toggle("toggle-risk", "risk");
+        toggle("toggle-collisions", "collisions");
+
+        window.zoomToSegment = (idx) => {
+          const f = flowsWgs.features[idx];
+          if (!f) return;
+          const bbox = turf.bbox(f);
+          map.fitBounds([[bbox[0], bbox[1]], [bbox[2], bbox[3]]], { padding: 40, maxZoom: 16 });
+        };
+
+        const progressEl = document.getElementById("progress");
+        const btn = document.getElementById("compute-risk");
+
+        const enableRiskLayer = () => map.setLayoutProperty("risk", "visibility", "visible");
+
+        btn.onclick = () => {
+          btn.disabled = true;
+          btn.textContent = "Computing?";
+          progressEl.textContent = "Starting risk computation?";
+          computeRiskAsync(flowsWgs, collisionsWgs, {
+            onProgress: (done, total) => {
+              progressEl.textContent = `Computing risk: ${done}/${total}`;
+            },
+            onDone: ({ scores, maxScore }) => {
+              const augmentedFlows = {
+                ...flowsWgs,
+                features: flowsWgs.features.map((f, i) => ({
+                  ...f,
+                  properties: { ...f.properties, crashes: scores[i].crashes }
+                }))
+              };
+              map.getSource("flows").setData(augmentedFlows);
+              map.setPaintProperty("risk", "line-color", [
+                "case",
+                [">", ["/", ["coalesce", ["get", "crashes"], 0], ["+", ["coalesce", ["get", "AWDT"], ["get", "ADT"], 0], 1]], maxScore * 0.75], "#ff375f",
+                [">", ["/", ["coalesce", ["get", "crashes"], 0], ["+", ["coalesce", ["get", "AWDT"], ["get", "ADT"], 0], 1]], maxScore * 0.5], "#ff7a3d",
+                [">", ["/", ["coalesce", ["get", "crashes"], 0], ["+", ["coalesce", ["get", "AWDT"], ["get", "ADT"], 0], 1]], maxScore * 0.25], "#ffd166",
+                "#d9ef8b"
+              ]);
+              map.setPaintProperty("risk", "line-width", [
+                "interpolate", ["linear"], ["/", ["coalesce", ["get", "crashes"], 0], ["+", ["coalesce", ["get", "AWDT"], ["get", "ADT"], 0], 1]],
+                0, 3,
+                maxScore * 0.25, 5,
+                maxScore * 0.5, 7,
+                maxScore, 9
+              ]);
+              map.on("click", "risk", (e) => {
+                const p = e.features[0].properties;
+                new maplibregl.Popup()
+                  .setLngLat(e.lngLat)
+                  .setHTML(`<b>Risk (2022)</b><br>Street: ${p.STNAME_ORD || "Segment"}<br>Crashes: ${p.crashes || 0}<br>AWDT: ${p.AWDT || p.ADT || "n/a"}`)
+                  .addTo(map);
+              });
+              renderTopList(scores, flowsWgs, map);
+              progressEl.textContent = "Risk ready.";
+              btn.textContent = "Recompute risk";
+              btn.disabled = false;
+              enableRiskLayer();
+            }
+          });
+        };
+      });
+    })();
+  </script>
+</body>
+</html>

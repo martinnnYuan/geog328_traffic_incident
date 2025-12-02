@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Seattle Traffic Safety — 2022</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="page">
+    <nav class="nav">
+      <div class="brand">Seattle Traffic Safety <span class="badge">2022</span></div>
+      <div class="nav-links">
+        <a class="active" href="index.html">Home</a>
+        <a href="map.html">Map</a>
+        <a href="team.html">Team</a>
+      </div>
+    </nav>
+
+    <section class="hero">
+      <h1>Mapping Seattle Traffic Risk in 2022</h1>
+      <p>We combine SDOT 2022 collision data with 2022 traffic flow counts to highlight locations where crashes are high relative to traffic volume. Use the interactive map to explore crashes, volumes, and our risk index, then review the team and methods behind the work.</p>
+      <div class="cta-row">
+        <a class="btn primary" href="map.html">Open Map</a>
+        <a class="btn" href="team.html">Meet the Team</a>
+      </div>
+    </section>
+
+    <section class="grid">
+      <div class="card">
+        <h3>2022 Focus</h3>
+        <p>All datasets are from 2022: SDOT collision records and traffic flow counts. Legends and labels keep the year front and center.</p>
+      </div>
+      <div class="card">
+        <h3>Risk Index</h3>
+        <p>We snap collisions to the nearest traffic segment and compute crashes per volume to reveal segments that punch above their weight in risk.</p>
+      </div>
+      <div class="card">
+        <h3>Layered View</h3>
+        <p>Mapbox-based base map, thematic overlays for collisions and flow, and labels kept on top for clarity. Legends explain the symbology.</p>
+      </div>
+      <div class="card">
+        <h3>Actionable Insights</h3>
+        <p>Identify spots with low traffic but high crashes that may indicate design, maintenance, or signage issues worth prioritizing.</p>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Team — Seattle Traffic Safety 2022</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="page">
+    <nav class="nav">
+      <div class="brand">Seattle Traffic Safety <span class="badge">2022</span></div>
+      <div class="nav-links">
+        <a href="index.html">Home</a>
+        <a href="map.html">Map</a>
+        <a class="active" href="team.html">Team</a>
+      </div>
+    </nav>
+
+    <section class="hero">
+      <h1>Team & Approach</h1>
+      <p>We pair SDOT collision data with traffic volume to find where risk is disproportionately high. Below is our team outline and workflow. Edit this page to add names, roles, and contact details.</p>
+    </section>
+
+    <section class="grid">
+      <div class="card">
+        <h3>Data</h3>
+        <p>2022 SDOT collisions and 2022 traffic flow counts (AWDT/ADT). Source files live in <code>assets/</code> and are loaded directly into the map.</p>
+      </div>
+      <div class="card">
+        <h3>Processing</h3>
+        <p>Client-side reprojection from EPSG:2926 to WGS84, then snapping collisions to nearest flow segment to compute crashes-per-volume risk.</p>
+      </div>
+      <div class="card">
+        <h3>Mapping</h3>
+        <p>Custom Mapbox base map tinted for contrast; thematic layers are ordered above the base and below labels to keep text readable.</p>
+      </div>
+      <div class="card">
+        <h3>Next Steps</h3>
+        <p>Add QA/QC on snapping radius, integrate a trusted segment ID join if available, and publish the map via GitHub Pages or Netlify.</p>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

@@ -24,6 +24,18 @@ Our project aims to make Seattle’s traffic safety patterns easy to understand 
 https://martinnnyuan.github.io/geog328_traffic_incident/index.html
 
 ## Screenshots
+![screenshot](assets/screenshot_homepage.png)
+![screenshot](assets/screenshot_mappage.png)
+![screenshot](assets/screenshot_teampage.png)
 
+## Main Functions
+
+## Data Sources
+
+## Applied Libraries and Web Service
+
+## Acknowledgements
+
+## AI Use Disclosure
 
 

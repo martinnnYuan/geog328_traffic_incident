@@ -33,7 +33,7 @@
         <div class="section">
           <h2>Layers</h2>
           <label><input type="checkbox" id="toggle-volume" checked /> Traffic volume (AWDT)</label>
-          <label><input type="checkbox" id="toggle-risk" /> Traffic risk index</label>
+          <label><input type="checkbox" id="toggle-risk" checked /> Traffic risk index</label>
           <label><input type="checkbox" id="toggle-collisions" checked /> Collisions</label>
         </div>
         <div class="section">
@@ -268,7 +268,7 @@
           source: "flows",
           layout: { visibility: "none" },
           paint: {
-            "line-color": "#d9ef8b",
+            "line-color": "#91cf60",
             "line-width": 3.5,
             "line-opacity": 0.95
           }
@@ -329,8 +329,8 @@
 
         btn.onclick = () => {
           btn.disabled = true;
-          btn.textContent = "Computing?";
-          progressEl.textContent = "Starting risk computation?";
+          btn.textContent = "Computing…";
+          progressEl.textContent = "Starting risk computation…";
           computeRiskAsync(flowsWgs, collisionsWgs, {
             onProgress: (done, total) => {
               progressEl.textContent = `Computing risk: ${done}/${total}`;
@@ -344,19 +344,31 @@
                 }))
               };
               map.getSource("flows").setData(augmentedFlows);
+              const nonZero = scores.map(s => s.score).filter(v => v > 0).sort((a, b) => a - b);
+              const q = (p) => {
+                if (!nonZero.length) return 0;
+                const idx = Math.min(nonZero.length - 1, Math.floor(p * nonZero.length));
+                return nonZero[idx];
+              };
+              const t25 = q(0.25);
+              const t50 = q(0.5);
+              const t75 = q(0.75);
+              const t90 = q(0.9);
               map.setPaintProperty("risk", "line-color", [
-                "case",
-                [">", ["/", ["coalesce", ["get", "crashes"], 0], ["+", ["coalesce", ["get", "AWDT"], ["get", "ADT"], 0], 1]], maxScore * 0.75], "#ff375f",
-                [">", ["/", ["coalesce", ["get", "crashes"], 0], ["+", ["coalesce", ["get", "AWDT"], ["get", "ADT"], 0], 1]], maxScore * 0.5], "#ff7a3d",
-                [">", ["/", ["coalesce", ["get", "crashes"], 0], ["+", ["coalesce", ["get", "AWDT"], ["get", "ADT"], 0], 1]], maxScore * 0.25], "#ffd166",
-                "#d9ef8b"
+                "step",
+                ["/", ["coalesce", ["get", "crashes"], 0], ["+", ["coalesce", ["get", "AWDT"], ["get", "ADT"], 0], 1]],
+                "#cddfd0", t25 || 0.000001, "#a9e3a0",
+                t50 || 0.000002, "#fee08b",
+                t75 || 0.000003, "#fdae61",
+                t90 || 0.000004, "#d73027"
               ]);
               map.setPaintProperty("risk", "line-width", [
                 "interpolate", ["linear"], ["/", ["coalesce", ["get", "crashes"], 0], ["+", ["coalesce", ["get", "AWDT"], ["get", "ADT"], 0], 1]],
-                0, 3,
-                maxScore * 0.25, 5,
-                maxScore * 0.5, 7,
-                maxScore, 9
+                0, 3.5,
+                t25 || 0.000001, 5,
+                t50 || 0.000002, 6.5,
+                t75 || 0.000003, 8,
+                t90 || 0.000004, 10
               ]);
               map.on("click", "risk", (e) => {
                 const p = e.features[0].properties;

@@ -47,7 +47,10 @@ The map uses two 2022 SDOT datasets: traffic flow counts (AWDT/ADT) from the Sea
     -    The web is hosted as static files through GitHub Pages, all related assets are stored online through GitHub for design and teamwork. 
 
 ## Acknowledgements
+We thank the help and suggestion from Professor Zhao and TA Alex. 
+
+We also thank SDOT and the City of Seattle for open access to the 2022 Traffic Flow Counts and SDOT Collisions datasets, the OpenStreetMap and Carto communities for the basemap tiles, and the maintainers of MapLibre GL, turf.js, and proj4 for the open source tools that power this web map.
 
 ## AI Use Disclosure
-
+We used CodeX in ChatGPT for the assistance of our website desgin. CodeX helped us with the build up of the structure of the web, improvements of the design style, and also some debug works. 
 

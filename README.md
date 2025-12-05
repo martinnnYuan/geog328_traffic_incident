@@ -29,10 +29,22 @@ https://martinnnyuan.github.io/geog328_traffic_incident/index.html
 ![screenshot](assets/screenshot_teampage.png)
 
 ## Main Functions
+-   Show 2022 collision points with severity aware styling and popups for date, type, and weather details.
+-   Display 2022 traffic flow segments with colors scaled by AWDT.
+-   Compute and visualize a risk index (crashes per volume) by snapping collisions to the nearest flow segment; toggle the layer and view to a top risk list with zoom in by clicking.
+-   Layer controls, popups, and legend to help compare collisions, volume, and risk hotspots.
 
 ## Data Sources
+The map uses two 2022 SDOT datasets: traffic flow counts (AWDT/ADT) from the Seattle open data portal (“2022 Traffic Flow Counts”) and SDOT’s citywide collisions (“SDOT Collisions, All Years,” filtered to 2022). Both source files are published in EPSG:2926 (NAD83(HARN) / Washington North, US ft) and are reprojected client-side to WGS84 for display; flow segments drive volume symbology, and collision points carry severity, date, and context fields used in popups and the risk index.
 
 ## Applied Libraries and Web Service
+-   Applied libraries
+    -    The app runs fully in the browser with MapLibre GL (open-source Mapbox GL JS–compatible rendering).
+    -    Turf.js for spatial ops (nearestPointOnLine, bbox).
+    -    Proj4 for client-side reprojection from EPSG:2926 to WGS84.
+-   Web Services
+    -    Basemap tiles come from Carto’s light raster set (built on OpenStreetMap).
+    -    The web is hosted as static files through GitHub Pages, all related assets are stored online through GitHub for design and teamwork. 
 
 ## Acknowledgements
 
